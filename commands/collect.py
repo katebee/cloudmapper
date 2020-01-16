@@ -56,6 +56,60 @@ def make_directory(path):
         pass
 
 
+def handle_client_error(e, call_summary):
+    if "NoSuchBucketPolicy" in str(e):
+        # This error occurs when you try to get the bucket policy for
+        # a bucket that has no bucket policy, so this can be ignored.
+        print("  - No bucket policy")
+    elif "NoSuchPublicAccessBlockConfiguration" in str(e):
+        # This error occurs when you try to get the account Public Access
+        # Block policy for an account that has none, so this can be ignored.
+        print("  - No public access block set")
+    elif (
+            "ServerSideEncryptionConfigurationNotFoundError" in str(e)
+            and call_summary["service"] == "s3"
+            and call_summary["action"] == "get_bucket_encryption"
+    ):
+        print("  - No encryption set")
+    elif (
+            "NoSuchEntity" in str(e)
+            and call_summary["action"] == "get_account_password_policy"
+    ):
+        print("  - No password policy set")
+    elif (
+            "AccessDeniedException" in str(e)
+            and call_summary["service"] == "organizations"
+            and call_summary["action"] == "list_accounts"
+    ):
+        print("  - Denied, which likely means this is not the organization root")
+    elif (
+            "RepositoryPolicyNotFoundException" in str(e)
+            and call_summary["service"] == "ecr"
+            and call_summary["action"] == "get_repository_policy"
+    ):
+        print("  - No policy exists")
+    elif (
+            "ResourceNotFoundException" in str(e)
+            and call_summary["service"] == "lambda"
+            and call_summary["action"] == "get_policy"
+    ):
+        print("  - No policy exists")
+    elif (
+            "AccessDeniedException" in str(e)
+            and call_summary["service"] == "kms"
+            and call_summary["action"] == "list_key_policies"
+    ):
+        print("  - Denied, which should mean this KMS has restricted access")
+    elif (
+            "AccessDeniedException" in str(e)
+            and call_summary["service"] == "kms"
+            and call_summary["action"] == "get_key_rotation_status"
+    ):
+        print("  - Denied, which should mean this KMS has restricted access")
+    else:
+        print("ClientError: {}".format(e), flush=True)
+
+
 def call_function(outputfile, handler, method_to_call, parameters, check, summary):
     """
     Calls the AWS API function and downloads the data
@@ -112,56 +166,8 @@ def call_function(outputfile, handler, method_to_call, parameters, check, summar
                 break
 
     except ClientError as e:
-        if "NoSuchBucketPolicy" in str(e):
-            # This error occurs when you try to get the bucket policy for a bucket that has no bucket policy, so this can be ignored.
-            print("  - No bucket policy")
-        elif "NoSuchPublicAccessBlockConfiguration" in str(e):
-            # This error occurs when you try to get the account Public Access Block policy for an account that has none, so this can be ignored.
-            print("  - No public access block set")
-        elif (
-            "ServerSideEncryptionConfigurationNotFoundError" in str(e)
-            and call_summary["service"] == "s3"
-            and call_summary["action"] == "get_bucket_encryption"
-        ):
-            print("  - No encryption set")
-        elif (
-            "NoSuchEntity" in str(e)
-            and call_summary["action"] == "get_account_password_policy"
-        ):
-            print("  - No password policy set")
-        elif (
-            "AccessDeniedException" in str(e)
-            and call_summary["service"] == "organizations"
-            and call_summary["action"] == "list_accounts"
-        ):
-            print("  - Denied, which likely means this is not the organization root")
-        elif (
-            "RepositoryPolicyNotFoundException" in str(e)
-            and call_summary["service"] == "ecr"
-            and call_summary["action"] == "get_repository_policy"
-        ):
-            print("  - No policy exists")
-        elif (
-            "ResourceNotFoundException" in str(e)
-            and call_summary["service"] == "lambda"
-            and call_summary["action"] == "get_policy"
-        ):
-            print("  - No policy exists")
-        elif (
-            "AccessDeniedException" in str(e)
-            and call_summary["service"] == "kms"
-            and call_summary["action"] == "list_key_policies"
-        ):
-            print("  - Denied, which should mean this KMS has restricted access")
-        elif (
-            "AccessDeniedException" in str(e)
-            and call_summary["service"] == "kms"
-            and call_summary["action"] == "get_key_rotation_status"
-        ):
-            print("  - Denied, which should mean this KMS has restricted access")
-        else:
-            print("ClientError: {}".format(e), flush=True)
-            call_summary["exception"] = e
+        handle_client_error(e, call_summary)
+        call_summary["exception"] = e
     except EndpointConnectionError as e:
         print("EndpointConnectionError: {}".format(e), flush=True)
         call_summary["exception"] = e
